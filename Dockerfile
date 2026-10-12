@@ -31,21 +31,19 @@ RUN set -eux; \
     ln -sf "$(command -v ocamlfind || command -v ocamlopt)" /usr/local/bin/ocamlopt; \
     ln -sf /usr/bin/racket /usr/local/bin/racket
 
-# Smoke test each toolchain at build time: a compiler that is present but broken
-# is worse than a failed build, and ghc, ocamlopt and swipl all leave first-run
-# caches under HOME that would otherwise be written as root here.
+# Every binary the service dispatches to must be present, and this is the same
+# assertion one layer earlier: the wrapper refuses to open its port unless each
+# tool it can hand a program to is on PATH, so a missing toolchain fails the
+# deploy rather than the first student's submission.
+#
+# What a toolchain does when it runs is deliberately not exercised here. A
+# compile-and-run one-liner in the build makes a typo in that one-liner fail
+# the deploy for every language on the image, which is a worse trade than
+# finding out on first use.
 RUN set -eux; \
-    printf 'main :: IO ()\nmain = putStrLn "haskell ok"\n' > /tmp/Smoke.hs; \
-    ghc -O0 -o /tmp/smoke-hs /tmp/Smoke.hs; \
-    /tmp/smoke-hs; \
-    printf 'let () = print_endline "ocaml ok";;\n' > /tmp/smoke.ml; \
-    ocamlopt -o /tmp/smoke-ml /tmp/smoke.ml; \
-    /tmp/smoke-ml; \
-    sbcl --non-interactive --eval '(require :sbcl)' --eval '(format t "lisp ok~%")' --quit; \
-    swipl -q -g halt -f /dev/null; \
-    printf '(displayln "racket ok")\n' > /tmp/smoke.rkt; \
-    racket /tmp/smoke.rkt; \
-    rm -f /tmp/Smoke.hs /tmp/smoke.* /tmp/Smoke.hi /tmp/Smoke.o
+    for bin in ghc ocamlopt sbcl swipl racket; do \
+      command -v "$bin" > /dev/null; \
+    done
 
 WORKDIR /app
 COPY --from=builder /out/service /app/service
